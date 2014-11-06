@@ -26,7 +26,7 @@ void dispatch_queue_t::impl::dispatch_thread_proc(dispatch_queue_t::impl *self)
         queue_lock_t queue_lock(self->queue_mtx);
         queue_size_t n = self->queue.size();
 
-        if (n == 0) {
+        while (n == 0) {
             self->queue_cond.wait(queue_lock);
             n = self->queue.size();
         }
