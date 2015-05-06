@@ -26,10 +26,7 @@ void dispatch_queue_t::impl::dispatch_thread_proc(dispatch_queue_t::impl *self)
         queue_lock_t queue_lock(self->queue_mtx);
         queue_size_t n = self->queue.size();
 
-        while (n == 0) {
-            self->queue_cond.wait(queue_lock);
-            n = self->queue.size();
-        }
+        self->queue_cond.wait(queue_lock, [&self]() { return self->queue.size() > 0; });
 
         for (queue_size_t i = 0; i < n; ++i) {
             auto dispatch_func = self->queue.front();
@@ -85,9 +82,7 @@ void dispatch_queue_t::dispatch_sync(std::function< void() > func)
         m->queue_cond.notify_one();
     }
 
-    while (!completed) {
-        sync_cond.wait(sync_lock);
-    }
+    sync_cond.wait(sync_lock, [&completed]() { return completed; });
 }
 
 void dispatch_queue_t::dispatch_flush()
