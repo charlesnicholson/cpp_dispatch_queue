@@ -24,9 +24,9 @@ void dispatch_queue_t::impl::dispatch_thread_proc(dispatch_queue_t::impl *self)
     while (self->quit == false)
     {
         queue_lock_t queue_lock(self->queue_mtx);
-        self->queue_cond.wait(queue_lock, [&] { return self->queue.size() > 0; });
+        self->queue_cond.wait(queue_lock, [&] { return !self->queue.empty(); });
 
-        while (self->queue.size()) {
+        while (!self->queue.empty()) {
             auto dispatch_func = self->queue.front();
             self->queue.pop();
 
