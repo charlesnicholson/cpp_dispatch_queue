@@ -19,7 +19,7 @@ int main(void)
     {
         auto bound_counter = 0;
         for (auto i = 0; i < 1024; ++i) {
-            dq.dispatch_async([&]() { ++bound_counter; });
+            dq.dispatch_async([&] { ++bound_counter; });
         }
 
         dq.dispatch_flush();
