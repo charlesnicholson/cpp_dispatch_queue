@@ -12,8 +12,8 @@ public:
     void dispatch_after(int msec, std::function< void() > func);
     void dispatch_flush();
 
-    dispatch_queue(dispatch_queue const &) = delete;
-    dispatch_queue& operator =(dispatch_queue) = delete;
+    dispatch_queue(dispatch_queue const&) = delete;
+    dispatch_queue& operator =(dispatch_queue const&) = delete;
 
 private:
     struct impl;
