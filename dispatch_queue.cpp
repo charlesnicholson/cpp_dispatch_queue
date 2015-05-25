@@ -37,35 +37,34 @@ struct dispatch_queue::impl
     static void dispatch_thread_proc(impl *self);
     static void timer_thread_proc(impl *self);
 
-    std::atomic< bool > quit;
-
+    std::mutex work_queue_mtx;
+    std::condition_variable work_queue_cond;
     std::deque< work_entry > work_queue;
-    std::priority_queue< work_entry, std::vector< work_entry >, std::greater< work_entry > > timers;
-
-    std::mutex queue_mtx;
-    std::condition_variable queue_cond;
-    std::thread queue_thread;
 
     std::mutex timer_mtx;
     std::condition_variable timer_cond;
+    std::priority_queue< work_entry, std::vector< work_entry >, std::greater< work_entry > > timers;
+
+    std::thread work_queue_thread;
     std::thread timer_thread;
 
-    std::atomic< bool > queue_thread_started;
+    std::atomic< bool > quit;
+    std::atomic< bool > work_queue_thread_started;
     std::atomic< bool > timer_thread_started;
 
-    using queue_lock = std::unique_lock< decltype(queue_mtx) >;
+    using queue_lock = std::unique_lock< decltype(work_queue_mtx) >;
     using timer_lock = std::unique_lock< decltype(timer_mtx) >;
 };
 
 void dispatch_queue::impl::dispatch_thread_proc(dispatch_queue::impl *self)
 {
-    queue_lock queue_lock(self->queue_mtx);
-    self->queue_cond.notify_one();
-    self->queue_thread_started = true;
+    queue_lock queue_lock(self->work_queue_mtx);
+    self->work_queue_cond.notify_one();
+    self->work_queue_thread_started = true;
 
     while (self->quit == false)
     {
-        self->queue_cond.wait(queue_lock, [&] { return !self->work_queue.empty(); });
+        self->work_queue_cond.wait(queue_lock, [&] { return !self->work_queue.empty(); });
 
         while (!self->work_queue.empty()) {
             auto work = self->work_queue.back();
@@ -95,29 +94,29 @@ void dispatch_queue::impl::timer_thread_proc(dispatch_queue::impl *self)
                 break;
             }
 
-            queue_lock _(self->queue_mtx);
+            queue_lock _(self->work_queue_mtx);
             auto where = std::find_if(self->work_queue.rbegin(),
                                       self->work_queue.rend(),
                                       [] (work_entry const &w) { return !w.from_timer; });
             self->work_queue.insert(where.base(), work);
             self->timers.pop();
-            self->queue_cond.notify_one();
+            self->work_queue_cond.notify_one();
         }
     }
 }
 
 dispatch_queue::impl::impl()
     : quit(false)
-    , queue_thread_started(false)
+    , work_queue_thread_started(false)
     , timer_thread_started(false)
 {
-    queue_lock ql(queue_mtx);
+    queue_lock ql(work_queue_mtx);
     timer_lock tl(timer_mtx);
 
-    queue_thread = std::thread(dispatch_thread_proc, this);
+    work_queue_thread = std::thread(dispatch_thread_proc, this);
     timer_thread = std::thread(timer_thread_proc, this);
 
-    queue_cond.wait(ql, [this] { return queue_thread_started.load(); });
+    work_queue_cond.wait(ql, [this] { return work_queue_thread_started.load(); });
     timer_cond.wait(tl, [this] { return timer_thread_started.load(); });
 }
 
@@ -126,7 +125,7 @@ dispatch_queue::dispatch_queue() : m(new impl) {}
 dispatch_queue::~dispatch_queue()
 {
     dispatch_async([this] { m->quit = true; });
-    m->queue_thread.join();
+    m->work_queue_thread.join();
 
     {
         impl::timer_lock _(m->timer_mtx);
@@ -138,9 +137,9 @@ dispatch_queue::~dispatch_queue()
 
 void dispatch_queue::dispatch_async(std::function< void() > func)
 {
-    impl::queue_lock _(m->queue_mtx);
+    impl::queue_lock _(m->work_queue_mtx);
     m->work_queue.push_front(work_entry(func));
-    m->queue_cond.notify_one();
+    m->work_queue_cond.notify_one();
 }
 
 void dispatch_queue::dispatch_sync(std::function< void() > func)
@@ -151,7 +150,7 @@ void dispatch_queue::dispatch_sync(std::function< void() > func)
     std::atomic< bool > completed(false);
 
     {
-        impl::queue_lock _(m->queue_mtx);
+        impl::queue_lock _(m->work_queue_mtx);
         m->work_queue.push_front(work_entry(func));
         m->work_queue.push_front(work_entry([&] {
             std::unique_lock< decltype(sync_mtx) > sync_cb_lock(sync_mtx);
@@ -159,7 +158,7 @@ void dispatch_queue::dispatch_sync(std::function< void() > func)
             sync_cond.notify_one();
         }));
 
-        m->queue_cond.notify_one();
+        m->work_queue_cond.notify_one();
     }
 
     sync_cond.wait(sync_lock, [&] { return completed.load(); });
