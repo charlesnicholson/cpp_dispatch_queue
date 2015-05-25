@@ -6,19 +6,30 @@
 #include <chrono>
 #include <functional>
 
-struct timer_entry
-{
-    std::function< void() > func;
-    std::chrono::steady_clock::time_point expiry;
-};
+using time_point = std::chrono::steady_clock::time_point;
 
 struct work_entry
 {
+    explicit work_entry(std::function< void() > func_)
+        : func(std::move(func_))
+        , expiry(time_point())
+        , from_timer(false)
+    {
+    }
+
+    work_entry(std::function< void() > func_, time_point expiry_)
+        : func(std::move(func_))
+        , expiry(expiry_)
+        , from_timer(true)
+    {
+    }
+
     std::function< void() > func;
+    time_point expiry;
     bool from_timer;
 };
 
-bool operator >(timer_entry const &lhs, timer_entry const &rhs) { return lhs.expiry > rhs.expiry; }
+bool operator >(work_entry const &lhs, work_entry const &rhs) { return lhs.expiry > rhs.expiry; }
 
 struct dispatch_queue_t::impl
 {
@@ -29,7 +40,7 @@ struct dispatch_queue_t::impl
     std::atomic< bool > quit;
 
     std::deque< work_entry > work_queue;
-    std::priority_queue< timer_entry, std::vector< timer_entry >, std::greater< timer_entry > > timers;
+    std::priority_queue< work_entry, std::vector< work_entry >, std::greater< work_entry > > timers;
 
     std::mutex queue_mtx;
     std::condition_variable queue_cond;
@@ -79,8 +90,8 @@ void dispatch_queue_t::impl::timer_thread_proc(dispatch_queue_t::impl *self)
 
         while (!self->timers.empty())
         {
-            auto const& timer = self->timers.top();
-            if (self->timer_cond.wait_until(timer_lock, timer.expiry, [&] { return self->quit.load(); })) {
+            auto const& work = self->timers.top();
+            if (self->timer_cond.wait_until(timer_lock, work.expiry, [&] { return self->quit.load(); })) {
                 break;
             }
 
@@ -88,7 +99,7 @@ void dispatch_queue_t::impl::timer_thread_proc(dispatch_queue_t::impl *self)
             auto where = std::find_if(self->work_queue.rbegin(),
                                       self->work_queue.rend(),
                                       [] (work_entry const &w) { return !w.from_timer; });
-            self->work_queue.insert(where.base(), { timer.func, true });
+            self->work_queue.insert(where.base(), work);
             self->timers.pop();
             self->queue_cond.notify_one();
         }
@@ -128,7 +139,7 @@ dispatch_queue_t::~dispatch_queue_t()
 void dispatch_queue_t::dispatch_async(std::function< void() > func)
 {
     impl::queue_lock _(m->queue_mtx);
-    m->work_queue.push_front({ func, false });
+    m->work_queue.push_front(work_entry(func));
     m->queue_cond.notify_one();
 }
 
@@ -141,12 +152,12 @@ void dispatch_queue_t::dispatch_sync(std::function< void() > func)
 
     {
         impl::queue_lock _(m->queue_mtx);
-        m->work_queue.push_front({ func, false });
-        m->work_queue.push_front({ [&] {
+        m->work_queue.push_front(work_entry(func));
+        m->work_queue.push_front(work_entry([&] {
             std::unique_lock< decltype(sync_mtx) > sync_cb_lock(sync_mtx);
             completed = true;
             sync_cond.notify_one();
-        }, false });
+        }));
 
         m->queue_cond.notify_one();
     }
@@ -157,7 +168,7 @@ void dispatch_queue_t::dispatch_sync(std::function< void() > func)
 void dispatch_queue_t::dispatch_after(int msec, std::function< void() > func)
 {
     impl::timer_lock _(m->timer_mtx);
-    m->timers.push({ func, std::chrono::steady_clock::now() + std::chrono::milliseconds(msec) });
+    m->timers.push(work_entry(func, std::chrono::steady_clock::now() + std::chrono::milliseconds(msec)));
     m->timer_cond.notify_one();
 }
 
