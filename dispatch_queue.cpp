@@ -12,6 +12,12 @@ struct timer_entry
     std::chrono::steady_clock::time_point expiry;
 };
 
+struct work_entry
+{
+    std::function< void() > func;
+    bool from_timer;
+};
+
 bool operator >(timer_entry const &lhs, timer_entry const &rhs) { return lhs.expiry > rhs.expiry; }
 
 struct dispatch_queue_t::impl
@@ -22,16 +28,18 @@ struct dispatch_queue_t::impl
 
     std::atomic< bool > quit;
 
-    std::deque< std::function< void() > > queue;
+    std::deque< work_entry > work_queue;
+    std::priority_queue< timer_entry, std::vector< timer_entry >, std::greater< timer_entry > > timers;
+
     std::mutex queue_mtx;
     std::condition_variable queue_cond;
     std::thread queue_thread;
-    std::atomic< bool > queue_thread_started;
 
-    std::priority_queue< timer_entry, std::vector< timer_entry >, std::greater< timer_entry > > timers;
     std::mutex timer_mtx;
     std::condition_variable timer_cond;
     std::thread timer_thread;
+
+    std::atomic< bool > queue_thread_started;
     std::atomic< bool > timer_thread_started;
 
     using queue_lock = std::unique_lock< decltype(queue_mtx) >;
@@ -46,14 +54,14 @@ void dispatch_queue_t::impl::dispatch_thread_proc(dispatch_queue_t::impl *self)
 
     while (self->quit == false)
     {
-        self->queue_cond.wait(queue_lock, [&] { return !self->queue.empty(); });
+        self->queue_cond.wait(queue_lock, [&] { return !self->work_queue.empty(); });
 
-        while (!self->queue.empty()) {
-            auto dispatch_func = self->queue.back();
-            self->queue.pop_back();
+        while (!self->work_queue.empty()) {
+            auto work = self->work_queue.back();
+            self->work_queue.pop_back();
 
             queue_lock.unlock();
-            dispatch_func();
+            work.func();
             queue_lock.lock();
         }
     }
@@ -77,7 +85,10 @@ void dispatch_queue_t::impl::timer_thread_proc(dispatch_queue_t::impl *self)
             }
 
             queue_lock _(self->queue_mtx);
-            self->queue.push_back(timer.func);
+            auto where = std::find_if(self->work_queue.rbegin(),
+                                      self->work_queue.rend(),
+                                      [] (work_entry const &w) { return !w.from_timer; });
+            self->work_queue.insert(where.base(), { timer.func, true });
             self->timers.pop();
             self->queue_cond.notify_one();
         }
@@ -117,7 +128,7 @@ dispatch_queue_t::~dispatch_queue_t()
 void dispatch_queue_t::dispatch_async(std::function< void() > func)
 {
     impl::queue_lock _(m->queue_mtx);
-    m->queue.push_front(func);
+    m->work_queue.push_front({ func, false });
     m->queue_cond.notify_one();
 }
 
@@ -130,12 +141,12 @@ void dispatch_queue_t::dispatch_sync(std::function< void() > func)
 
     {
         impl::queue_lock _(m->queue_mtx);
-        m->queue.push_front(func);
-        m->queue.push_front([&] {
+        m->work_queue.push_front({ func, false });
+        m->work_queue.push_front({ [&] {
             std::unique_lock< decltype(sync_mtx) > sync_cb_lock(sync_mtx);
             completed = true;
             sync_cond.notify_one();
-        });
+        }, false });
 
         m->queue_cond.notify_one();
     }

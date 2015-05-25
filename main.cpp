@@ -13,14 +13,17 @@ namespace
 int main(void)
 {
     dispatch_queue_t dq;
-    dq.dispatch_after(0, [] { std::printf("after 0\n"); });
-    dq.dispatch_after(100, [] { std::printf("after 100\n"); });
-    dq.dispatch_after(200, [] { std::printf("after 200\n"); });
-    dq.dispatch_after(300, [] { std::printf("after 300\n"); });
-    dq.dispatch_after(400, [] { std::printf("after 400\n"); });
-    dq.dispatch_after(500, [] { std::printf("after 500\n"); });
+
+    for (auto i = 0; i < 20; ++i) {
+        dq.dispatch_after(i * 50, [=] { std::printf("dispatch_after(%d)\n", i * 50); });
+    }
+
     dq.dispatch_async(hello);
     dq.dispatch_async(std::bind(add, 123, 456));
+
+    std::printf("sleeping main thread for 500ms...\n");
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::printf("main thread waking up.\n");
 
     {
         auto bound_counter = 0;
@@ -32,10 +35,10 @@ int main(void)
         std::printf("bound_counter = %d\n", bound_counter);
     }
 
-    std::printf("dispatch_sync sleep for 1s... ");
+    std::printf("dispatch_sync sleep for 1s...\n");
     std::fflush(stdout);
     dq.dispatch_sync([] { std::this_thread::sleep_for(std::chrono::milliseconds(1000)); });
-    std::printf("and we're back.\n");
+    std::printf("dispatch_sync sleep complete.\n");
 
     {
         auto i = 0;
@@ -58,7 +61,6 @@ int main(void)
         std::printf("param_counter = %d\n", param_counter);
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     return 0;
 }
 
