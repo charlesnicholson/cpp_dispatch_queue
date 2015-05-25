@@ -8,14 +8,11 @@
 
 struct timer_entry
 {
-    std::chrono::steady_clock::time_point expiry;
     std::function< void() > func;
+    std::chrono::steady_clock::time_point expiry;
 };
 
-bool operator >(timer_entry const &lhs, timer_entry const &rhs)
-{
-    return lhs.expiry > rhs.expiry;
-}
+bool operator >(timer_entry const &lhs, timer_entry const &rhs) { return lhs.expiry > rhs.expiry; }
 
 struct dispatch_queue_t::impl
 {
@@ -30,13 +27,14 @@ struct dispatch_queue_t::impl
     std::condition_variable queue_cond;
     std::thread queue_thread;
     std::atomic< bool > queue_thread_started;
-    using queue_lock = std::unique_lock< decltype(queue_mtx) >;
 
     std::priority_queue< timer_entry, std::vector< timer_entry >, std::greater< timer_entry > > timers;
     std::mutex timer_mtx;
     std::condition_variable timer_cond;
     std::thread timer_thread;
     std::atomic< bool > timer_thread_started;
+
+    using queue_lock = std::unique_lock< decltype(queue_mtx) >;
     using timer_lock = std::unique_lock< decltype(timer_mtx) >;
 };
 
@@ -101,10 +99,7 @@ dispatch_queue_t::impl::impl()
     timer_cond.wait(tl, [this] { return timer_thread_started.load(); });
 }
 
-dispatch_queue_t::dispatch_queue_t()
-    : m(new impl)
-{
-}
+dispatch_queue_t::dispatch_queue_t() : m(new impl) {}
 
 dispatch_queue_t::~dispatch_queue_t()
 {
@@ -151,7 +146,7 @@ void dispatch_queue_t::dispatch_sync(std::function< void() > func)
 void dispatch_queue_t::dispatch_after(int msec, std::function< void() > func)
 {
     impl::timer_lock _(m->timer_mtx);
-    m->timers.push({ std::chrono::steady_clock::now() + std::chrono::milliseconds(msec), func });
+    m->timers.push({ func, std::chrono::steady_clock::now() + std::chrono::milliseconds(msec) });
     m->timer_cond.notify_one();
 }
 
