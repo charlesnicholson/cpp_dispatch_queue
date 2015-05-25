@@ -13,6 +13,12 @@ namespace
 int main(void)
 {
     dispatch_queue_t dq;
+    dq.dispatch_after(0, [] { std::printf("after 0\n"); });
+    dq.dispatch_after(100, [] { std::printf("after 100\n"); });
+    dq.dispatch_after(200, [] { std::printf("after 200\n"); });
+    dq.dispatch_after(300, [] { std::printf("after 300\n"); });
+    dq.dispatch_after(400, [] { std::printf("after 400\n"); });
+    dq.dispatch_after(500, [] { std::printf("after 500\n"); });
     dq.dispatch_async(hello);
     dq.dispatch_async(std::bind(add, 123, 456));
 
@@ -52,6 +58,7 @@ int main(void)
         std::printf("param_counter = %d\n", param_counter);
     }
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     return 0;
 }
 

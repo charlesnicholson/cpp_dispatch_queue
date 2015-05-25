@@ -9,6 +9,7 @@ public:
 
     void dispatch_async(std::function< void() > func);
     void dispatch_sync(std::function< void() > func);
+    void dispatch_after(int msec, std::function< void() > func);
     void dispatch_flush();
 
     dispatch_queue_t(dispatch_queue_t const &) = delete;
