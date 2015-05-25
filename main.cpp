@@ -12,7 +12,7 @@ namespace
 
 int main(void)
 {
-    dispatch_queue_t dq;
+    dispatch_queue dq;
 
     for (auto i = 0; i < 20; ++i) {
         dq.dispatch_after(i * 50, [=] { std::printf("dispatch_after(%d)\n", i * 50); });

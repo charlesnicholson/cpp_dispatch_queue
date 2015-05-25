@@ -31,7 +31,7 @@ struct work_entry
 
 bool operator >(work_entry const &lhs, work_entry const &rhs) { return lhs.expiry > rhs.expiry; }
 
-struct dispatch_queue_t::impl
+struct dispatch_queue::impl
 {
     impl();
     static void dispatch_thread_proc(impl *self);
@@ -57,7 +57,7 @@ struct dispatch_queue_t::impl
     using timer_lock = std::unique_lock< decltype(timer_mtx) >;
 };
 
-void dispatch_queue_t::impl::dispatch_thread_proc(dispatch_queue_t::impl *self)
+void dispatch_queue::impl::dispatch_thread_proc(dispatch_queue::impl *self)
 {
     queue_lock queue_lock(self->queue_mtx);
     self->queue_cond.notify_one();
@@ -78,7 +78,7 @@ void dispatch_queue_t::impl::dispatch_thread_proc(dispatch_queue_t::impl *self)
     }
 }
 
-void dispatch_queue_t::impl::timer_thread_proc(dispatch_queue_t::impl *self)
+void dispatch_queue::impl::timer_thread_proc(dispatch_queue::impl *self)
 {
     timer_lock timer_lock(self->timer_mtx);
     self->timer_cond.notify_one();
@@ -106,7 +106,7 @@ void dispatch_queue_t::impl::timer_thread_proc(dispatch_queue_t::impl *self)
     }
 }
 
-dispatch_queue_t::impl::impl()
+dispatch_queue::impl::impl()
     : quit(false)
     , queue_thread_started(false)
     , timer_thread_started(false)
@@ -121,9 +121,9 @@ dispatch_queue_t::impl::impl()
     timer_cond.wait(tl, [this] { return timer_thread_started.load(); });
 }
 
-dispatch_queue_t::dispatch_queue_t() : m(new impl) {}
+dispatch_queue::dispatch_queue() : m(new impl) {}
 
-dispatch_queue_t::~dispatch_queue_t()
+dispatch_queue::~dispatch_queue()
 {
     dispatch_async([this] { m->quit = true; });
     m->queue_thread.join();
@@ -136,14 +136,14 @@ dispatch_queue_t::~dispatch_queue_t()
     m->timer_thread.join();
 }
 
-void dispatch_queue_t::dispatch_async(std::function< void() > func)
+void dispatch_queue::dispatch_async(std::function< void() > func)
 {
     impl::queue_lock _(m->queue_mtx);
     m->work_queue.push_front(work_entry(func));
     m->queue_cond.notify_one();
 }
 
-void dispatch_queue_t::dispatch_sync(std::function< void() > func)
+void dispatch_queue::dispatch_sync(std::function< void() > func)
 {
     std::mutex sync_mtx;
     impl::queue_lock sync_lock(sync_mtx);
@@ -165,14 +165,14 @@ void dispatch_queue_t::dispatch_sync(std::function< void() > func)
     sync_cond.wait(sync_lock, [&] { return completed.load(); });
 }
 
-void dispatch_queue_t::dispatch_after(int msec, std::function< void() > func)
+void dispatch_queue::dispatch_after(int msec, std::function< void() > func)
 {
     impl::timer_lock _(m->timer_mtx);
     m->timers.push(work_entry(func, std::chrono::steady_clock::now() + std::chrono::milliseconds(msec)));
     m->timer_cond.notify_one();
 }
 
-void dispatch_queue_t::dispatch_flush()
+void dispatch_queue::dispatch_flush()
 {
     dispatch_sync([]{});
 }
