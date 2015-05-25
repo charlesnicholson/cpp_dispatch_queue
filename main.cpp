@@ -18,6 +18,9 @@ int main(void)
         dq.dispatch_after(i * 50, [=] { std::printf("dispatch_after(%d)\n", i * 50); });
     }
 
+    dq.dispatch_after(5, [] { std::printf("explicit dispatch_after(5)\n"); });
+    dq.dispatch_after(300, [] { std::printf("explicit dispatch_after(300)\n"); });
+
     dq.dispatch_async(hello);
     dq.dispatch_async(std::bind(add, 123, 456));
 
