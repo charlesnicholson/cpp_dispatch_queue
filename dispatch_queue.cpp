@@ -69,7 +69,7 @@ void dispatch_queue_t::impl::timer_thread_proc(dispatch_queue_t::impl *self)
 
     while (self->quit == false)
     {
-        self->timer_cond.wait(timer_lock, [&] { return self->quit || !self->queue.empty(); });
+        self->timer_cond.wait(timer_lock, [&] { return self->quit || !self->timers.empty(); });
 
         while (!self->timers.empty())
         {
