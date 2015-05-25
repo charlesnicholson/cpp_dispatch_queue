@@ -97,13 +97,15 @@ void dispatch_queue::impl::timer_thread_proc(dispatch_queue::impl *self)
                 break;
             }
 
-            work_queue_lock _(self->work_queue_mtx);
-            auto where = std::find_if(self->work_queue.rbegin(),
-                                      self->work_queue.rend(),
-                                      [] (work_entry const &w) { return !w.from_timer; });
-            self->work_queue.insert(where.base(), work);
-            self->timers.pop();
-            self->work_queue_cond.notify_one();
+            {
+                work_queue_lock _(self->work_queue_mtx);
+                auto where = std::find_if(self->work_queue.rbegin(),
+                                          self->work_queue.rend(),
+                                          [] (work_entry const &w) { return !w.from_timer; });
+                self->work_queue.insert(where.base(), work);
+                self->timers.pop();
+                self->work_queue_cond.notify_one();
+            }
         }
     }
 }
