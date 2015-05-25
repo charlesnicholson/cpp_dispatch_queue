@@ -43,10 +43,10 @@ int main(void)
     {
         auto i = 0;
         dq.dispatch_async([&] {
-            std::printf("level %d\n", i++);
+            std::printf("dispatch_async: nesting level %d\n", i++);
             dq.dispatch_async([&] {
-                std::printf("level %d\n", i++);
-                dq.dispatch_async([&] { std::printf("level %d\n", i++); });
+                std::printf("dispatch_async: nesting level %d\n", i++);
+                dq.dispatch_async([&] { std::printf("dispatch_async: nesting level %d\n", i++); });
             });
         });
     }
