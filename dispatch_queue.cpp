@@ -1,10 +1,14 @@
 #include "dispatch_queue.h"
 
+#include <atomic>
 #include <thread>
 #include <queue>
 #include <deque>
 #include <chrono>
 #include <functional>
+#include <mutex>
+#include <condition_variable>
+#include <algorithm>
 
 using time_point = std::chrono::steady_clock::time_point;
 
