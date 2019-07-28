@@ -1,25 +1,25 @@
 #include "dispatch_queue.h"
 
 #include <chrono>
-#include <thread>
 #include <cstdio>
+#include <thread>
 
-namespace
-{
-    void hello() { std::printf("hello world\n"); }
-    void add(int a, int b) { std::printf("%d + %d = %d\n", a, b, a + b); }
-}
+namespace {
+void hello() { std::printf("hello world\n"); }
+void add(int a, int b) { std::printf("%d + %d = %d\n", a, b, a + b); }
+}  // namespace
 
-int main(void)
-{
+int main(void) {
     dispatch_queue dq;
 
     for (auto i = 0; i < 20; ++i) {
-        dq.dispatch_after(i * 50, [=] { std::printf("dispatch_after(%d)\n", i * 50); });
+        dq.dispatch_after(i * 50,
+                          [=] { std::printf("dispatch_after(%d)\n", i * 50); });
     }
 
     dq.dispatch_after(5, [] { std::printf("explicit dispatch_after(5)\n"); });
-    dq.dispatch_after(300, [] { std::printf("explicit dispatch_after(300)\n"); });
+    dq.dispatch_after(300,
+                      [] { std::printf("explicit dispatch_after(300)\n"); });
 
     dq.dispatch_async(hello);
     dq.dispatch_async(std::bind(add, 123, 456));
@@ -40,16 +40,19 @@ int main(void)
 
     std::printf("dispatch_sync sleep for 1s...\n");
     std::fflush(stdout);
-    dq.dispatch_sync([] { std::this_thread::sleep_for(std::chrono::milliseconds(1000)); });
+    dq.dispatch_sync(
+        [] { std::this_thread::sleep_for(std::chrono::milliseconds(1000)); });
     std::printf("dispatch_sync sleep complete.\n");
 
+    auto nest = 0;
     {
-        auto i = 0;
         dq.dispatch_async([&] {
-            std::printf("dispatch_async: nesting level %d\n", i++);
+            std::printf("dispatch_async: nesting level %d\n", nest++);
             dq.dispatch_async([&] {
-                std::printf("dispatch_async: nesting level %d\n", i++);
-                dq.dispatch_async([&] { std::printf("dispatch_async: nesting level %d\n", i++); });
+                std::printf("dispatch_async: nesting level %d\n", nest++);
+                dq.dispatch_async([&] {
+                    std::printf("dispatch_async: nesting level %d\n", nest++);
+                });
             });
         });
     }
@@ -57,7 +60,8 @@ int main(void)
     {
         auto param_counter = 0;
         for (auto i = 0; i < 2048; ++i) {
-            dq.dispatch_async(std::bind([](int& c) { ++c; }, std::ref(param_counter)));
+            dq.dispatch_async(
+                std::bind([](int& c) { ++c; }, std::ref(param_counter)));
         }
 
         dq.dispatch_flush();
